@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+:root {
+  --background: linear-gradient(to right, #83a4d4, #b6fbff);
+  --foreground: #333333;
+  --primary: #4a90e2;
+  --secondary: #50e3c2;
+  --card-background: rgba(255, 255, 255, 0.8);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Roboto', sans-serif;
+}
