@@ -11,7 +11,10 @@ services:
           name: grocery-db
           property: connectionString
       - key: NEXTAUTH_URL
-        sync: false
+        fromService:
+          type: web
+          name: grocery-app
+          property: url
       - key: NEXTAUTH_SECRET
         generateValue: true
 
