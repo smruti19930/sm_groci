@@ -11,10 +11,7 @@ services:
           name: grocery-db
           property: connectionString
       - key: NEXTAUTH_URL
-        fromService:
-          type: web
-          name: grocery-app
-          property: url
+        value: https://sm-groci.onrender.com
       - key: NEXTAUTH_SECRET
         generateValue: true
 
