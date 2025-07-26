@@ -1,9 +1,9 @@
-import NextAuth from 'next-auth';
+import NextAuth, { AuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import db from '../../../database';
 import bcrypt from 'bcrypt';
 
-export default NextAuth({
+const nextAuthOptions: AuthOptions = {
   providers: [
     CredentialsProvider({
       name: 'Credentials',
@@ -40,14 +40,14 @@ export default NextAuth({
     strategy: 'jwt',
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user }: { token: any, user: any }) {
       if (user) {
         token.id = user.id;
         token.storeId = user.storeId;
       }
       return token;
     },
-    async session({ session, token }) {
+    async session({ session, token }: { session: any, token: any }) {
       if (session.user) {
         session.user.id = token.id as string;
         session.user.storeId = token.storeId as string;
@@ -55,4 +55,10 @@ export default NextAuth({
       return session;
     }
   }
-});
+};
+
+if (process.env.RENDER_EXTERNAL_URL) {
+  (nextAuthOptions as any).trustHost = true;
+}
+
+export default NextAuth(nextAuthOptions);
