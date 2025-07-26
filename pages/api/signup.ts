@@ -1,9 +1,8 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { openDb } from '../../database';
+import db from '../../database';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method === "POST") {
-    const db = await openDb();
     const {username, password} = req.body;
     try {
       await db.query("INSERT INTO users (username, password) VALUES ($1, $2)", [username, password]);

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
+import Link from 'next/link';
 import styles from '../../styles/Admin.module.css';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
@@ -63,23 +64,25 @@ export default function AddItem() {
       .catch((error) => {
         console.error('Error fetching units:', error);
       });
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     if (isScannerOpen) {
-      const scanner = new Html5QrcodeScanner(
-        'qr-code-reader-add-item',
-        { fps: 10, qrbox: 250 },
-        false
-      );
-      scanner.render(onScanSuccess, onScanFailure);
+      setTimeout(() => {
+        const scanner = new Html5QrcodeScanner(
+          'qr-code-reader-add-item',
+          { fps: 10, qrbox: 250 },
+          false
+        );
+        const onScanSuccess = (decodedText: string, decodedResult: any) => {
+          setNewItemBarcode(decodedText);
+          setIsScannerOpen(false);
+          scanner.clear();
+        };
+        scanner.render(onScanSuccess, onScanFailure);
+      }, 0);
     }
   }, [isScannerOpen]);
-
-  const onScanSuccess = (decodedText: string, decodedResult: any) => {
-    setNewItemBarcode(decodedText);
-    setIsScannerOpen(false);
-  };
 
   const onScanFailure = (error: any) => {
     // handle scan failure, usually better to ignore and keep scanning.
@@ -159,7 +162,7 @@ export default function AddItem() {
 
   const handleLogout = () => {
     localStorage.removeItem('adminUser');
-    router.push('/grocery');
+    router.push('/admin/login');
   };
 
   const handleDownloadTemplate = () => {
@@ -223,117 +226,100 @@ export default function AddItem() {
 
   return (
     <div className={styles.container}>
-      <div>
-        <button onClick={handleLogout} style={{ float: 'right' }}>Logout</button>
+      <div className={styles.headerActions}>
         <h1>Add Item</h1>
-        <div className={styles.form}>
+        <Link href="/admin/purchase-from-vendor" passHref>
+          <div className={styles.purchaseLink}>Purchase from Vendor</div>
+        </Link>
+        <button onClick={handleLogout}>Logout</button>
+      </div>
+
+      <div className={styles.topActions}>
+        <div className={styles.bulkUpload}>
           <button onClick={handleDownloadTemplate}>Download Template</button>
           <input type="file" onChange={handleFileUpload} accept=".xlsx, .xls" />
         </div>
-        {isScannerOpen && (
-          <div id="qr-code-reader-add-item"></div>
-        )}
-        <form onSubmit={handleAddItem} className={styles.form}>
-          <label htmlFor="itemName">Item Name</label>
-          <input
-            id="itemName"
-            type="text"
-            value={newItemName}
-            onChange={(e) => setNewItemName(e.target.value)}
-            placeholder="Item name"
-          />
-          <label htmlFor="quantity">Quantity</label>
-          <input
-            id="quantity"
-            type="number"
-            value={newItemStock}
-            onChange={(e) => setNewItemStock(Number(e.target.value))}
-            placeholder="Quantity"
-          />
-          <label htmlFor="price">Price</label>
-          <input
-            id="price"
-            type="number"
-            value={newItemPrice}
-            onChange={(e) => setNewItemPrice(Number(e.target.value))}
-            placeholder="Price"
-            step="0.01"
-          />
-          <label htmlFor="unit">Unit</label>
-          <select id="unit" value={newItemUnit} onChange={(e) => setNewItemUnit(e.target.value)}>
-            {units.map(unit => (
-              <option key={unit} value={unit}>{unit}</option>
-            ))}
-          </select>
-          <label htmlFor="category">Category</label>
-          <input
-            id="category"
-            type="text"
-            value={newItemCategory}
-            onChange={(e) => setNewItemCategory(e.target.value)}
-            placeholder="Category"
-          />
-          <label htmlFor="barcode">Barcode</label>
-          <input
-            id="barcode"
-            type="text"
-            value={newItemBarcode}
-            onChange={(e) => setNewItemBarcode(e.target.value)}
-            placeholder="Barcode"
-          />
-          <button type="button" onClick={() => setIsScannerOpen(true)}>Scan Barcode</button>
-          <button type="submit">Add Item</button>
-        </form>
-        <form onSubmit={handleUpdateStock} className={styles.form}>
-          <h2>Update Item</h2>
-          <select
-            value={selectedItemId ?? ''}
-            onChange={(e) => setSelectedItemId(Number(e.target.value))}
-          >
-            <option value="" disabled>
-              Select an item
-            </option>
-            {items.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-          <label htmlFor="update-stock">Stock</label>
-          <input
-            id="update-stock"
-            type="number"
-            value={updateStock}
-            onChange={(e) => setUpdateStock(Number(e.target.value))}
-            placeholder="New Stock"
-          />
-          <label htmlFor="update-category">Category</label>
-          <input
-            id="update-category"
-            type="text"
-            value={updateCategory}
-            onChange={(e) => setUpdateCategory(e.target.value)}
-            placeholder="Category"
-          />
-          <label htmlFor="update-unit">Unit</label>
-          <select id="update-unit" value={updateUnit} onChange={(e) => setUpdateUnit(e.target.value)}>
-            {units.map(unit => (
-              <option key={unit} value={unit}>{unit}</option>
-            ))}
-          </select>
-          <button type="submit">Update Item</button>
-        </form>
-        <ul className={styles.list}>
-          {items.map((item) => (
-            <li key={item.id} className={styles.item}>
-              <span>
-                {item.name} - Stock: {item.stock} - Price: ₹{item.price} - Barcode: {item.barcode}
-              </span>
-              <button onClick={() => handleDeleteItem(item.id)}>Delete</button>
-            </li>
-          ))}
-        </ul>
       </div>
+
+      {isScannerOpen && (
+        <div id="qr-code-reader-add-item"></div>
+      )}
+
+      <form onSubmit={handleAddItem} className={styles.form}>
+        <h2>Add New Item</h2>
+        <div className={styles.formRow}>
+          <div>
+            <label htmlFor="itemName">Item Name</label>
+            <input id="itemName" type="text" value={newItemName} onChange={(e) => setNewItemName(e.target.value)} placeholder="Item name" />
+          </div>
+          <div>
+            <label htmlFor="quantity">Quantity</label>
+            <input id="quantity" type="number" value={newItemStock} onChange={(e) => setNewItemStock(Number(e.target.value))} placeholder="Quantity" />
+          </div>
+          <div>
+            <label htmlFor="price">Price</label>
+            <input id="price" type="number" value={newItemPrice} onChange={(e) => setNewItemPrice(Number(e.target.value))} placeholder="Price" step="0.01" />
+          </div>
+        </div>
+        <div className={styles.formRow}>
+          <div>
+            <label htmlFor="unit">Unit</label>
+            <select id="unit" value={newItemUnit} onChange={(e) => setNewItemUnit(e.target.value)}>
+              {units.map(unit => (
+                <option key={unit} value={unit}>{unit}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="category">Category</label>
+            <input id="category" type="text" value={newItemCategory} onChange={(e) => setNewItemCategory(e.target.value)} placeholder="Category" />
+          </div>
+          <div>
+            <label htmlFor="barcode">Barcode</label>
+            <input id="barcode" type="text" value={newItemBarcode} onChange={(e) => setNewItemBarcode(e.target.value)} placeholder="Barcode" />
+          </div>
+        </div>
+        <button type="button" onClick={() => setIsScannerOpen(true)}>Scan Barcode</button>
+        <button type="submit">Add Item</button>
+      </form>
+
+      <form onSubmit={handleUpdateStock} className={styles.form}>
+        <h2>Update Item</h2>
+        <select value={selectedItemId ?? ''} onChange={(e) => setSelectedItemId(Number(e.target.value))}>
+          <option value="" disabled>Select an item</option>
+          {items.map((item) => (
+            <option key={item.id} value={item.id}>{item.name}</option>
+          ))}
+        </select>
+        <div className={styles.formRow}>
+          <div>
+            <label htmlFor="update-stock">Stock</label>
+            <input id="update-stock" type="number" value={updateStock} onChange={(e) => setUpdateStock(Number(e.target.value))} placeholder="New Stock" />
+          </div>
+          <div>
+            <label htmlFor="update-category">Category</label>
+            <input id="update-category" type="text" value={updateCategory} onChange={(e) => setUpdateCategory(e.target.value)} placeholder="Category" />
+          </div>
+          <div>
+            <label htmlFor="update-unit">Unit</label>
+            <select id="update-unit" value={updateUnit} onChange={(e) => setUpdateUnit(e.target.value)}>
+              {units.map(unit => (
+                <option key={unit} value={unit}>{unit}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <button type="submit">Update Item</button>
+      </form>
+
+      <ul className={styles.list}>
+        {items.map((item) => (
+          <li key={item.id} className={styles.item}>
+            <span>{item.name} - Stock: {item.stock} - Price: ₹{item.price} - Barcode: {item.barcode}</span>
+            <button onClick={() => handleDeleteItem(item.id)}>Delete</button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

@@ -4,6 +4,13 @@ import styles from '../styles/SellItem.module.css';
 import Modal from '../components/Modal';
 import { generateInvoicePDF } from '../lib/invoice';
 import { Html5QrcodeScanner } from 'html5-qrcode';
+import { useSession, signIn } from 'next-auth/react';
+
+interface Batch {
+  batch_code: string;
+  price: number;
+  stock: number;
+}
 
 interface Item {
   id: number;
@@ -13,9 +20,11 @@ interface Item {
   category: string;
   barcode: string;
   quantity: number;
+  batch_code?: string;
 }
 
 export default function SellItem() {
+  const { data: session, status } = useSession();
   const [items, setItems] = useState<Item[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
@@ -25,20 +34,30 @@ export default function SellItem() {
   const [selectedItemForQuantity, setSelectedItemForQuantity] = useState<Item | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [batches, setBatches] = useState<Batch[]>([]);
+  const [selectedBatch, setSelectedBatch] = useState<Batch | null>(null);
   const [barcode, setBarcode] = useState('');
 
   useEffect(() => {
-    fetch('/api/items')
-      .then((res) => res.json())
-      .then((data) => {
-        setItems(data);
-        return fetch('/api/categories');
-      })
-      .then((res) => res.json())
-      .then((data) => {
-        setCategories(data);
-      });
-  }, []);
+    if (status === 'unauthenticated') {
+      signIn();
+    }
+  }, [status]);
+
+  useEffect(() => {
+    if (session) {
+      fetch(`/api/items?userId=${session.user.id}`)
+        .then((res) => res.json())
+        .then((data) => {
+          setItems(data);
+          return fetch('/api/categories');
+        })
+        .then((res) => res.json())
+        .then((data) => {
+          setCategories(data);
+        });
+    }
+  }, [session]);
 
   useEffect(() => {
     if (isScannerOpen) {
@@ -98,42 +117,68 @@ export default function SellItem() {
     }
   };
 
-  const openQuantityModal = (item: Item) => {
-    const itemInCart = cart.find((cartItem) => cartItem.id === item.id);
-    if (itemInCart && itemInCart.quantity >= item.stock) {
-      alert('Not enough stock');
+  const openQuantityModal = async (item: Item) => {
+    if (!session) {
+      alert('You must be logged in to perform this action.');
       return;
     }
-    setSelectedItemForQuantity(item);
-    setIsQuantityModalOpen(true);
+    try {
+      const res = await fetch(`/api/items-with-batches?itemId=${item.id}&userId=${session.user.id}`);
+      if (res.ok) {
+        const batchData: Batch[] = await res.json();
+        if (Array.isArray(batchData) && batchData.length > 0) {
+          setBatches(batchData);
+          setSelectedBatch(batchData[0]);
+          setSelectedItemForQuantity(item);
+          setIsQuantityModalOpen(true);
+        } else {
+          alert('This item is out of stock or has no batches.');
+        }
+      } else {
+        console.error('Failed to fetch batches');
+        alert('Could not fetch batch information for this item.');
+      }
+    } catch (error) {
+      console.error('Error fetching batches:', error);
+      alert('An error occurred while fetching batch information.');
+    }
   };
 
   const addToCart = () => {
-    if (selectedItemForQuantity) {
+    if (selectedItemForQuantity && selectedBatch) {
       const itemInCart = cart.find(
-        (item) => item.id === selectedItemForQuantity.id
+        (item) => item.id === selectedItemForQuantity.id && item.batch_code === selectedBatch.batch_code
       );
+
+      const availableStock = selectedBatch.stock - (itemInCart?.quantity || 0);
+      if (quantity > availableStock) {
+        alert('Not enough stock in this batch.');
+        return;
+      }
+
       if (itemInCart) {
-        if (itemInCart.quantity + quantity > selectedItemForQuantity.stock) {
-          alert('Not enough stock');
-          return;
-        }
         setCart(
           cart.map((cartItem) =>
-            cartItem.id === selectedItemForQuantity.id
+            cartItem.id === selectedItemForQuantity.id && cartItem.batch_code === selectedBatch.batch_code
               ? { ...cartItem, quantity: cartItem.quantity + quantity }
               : cartItem
           )
         );
       } else {
-        if (quantity > selectedItemForQuantity.stock) {
-          alert('Not enough stock');
-          return;
-        }
-        setCart([...cart, { ...selectedItemForQuantity, quantity }]);
+        setCart([
+          ...cart,
+          { 
+            ...selectedItemForQuantity, 
+            quantity, 
+            price: selectedBatch.price, // Use batch price
+            batch_code: selectedBatch.batch_code 
+          }
+        ]);
       }
       setIsQuantityModalOpen(false);
       setQuantity(1);
+      setBatches([]);
+      setSelectedBatch(null);
     }
   };
 
@@ -143,6 +188,15 @@ export default function SellItem() {
       (!selectedCategory || item.category === selectedCategory)
   );
 
+  const groupedItems = filteredItems.reduce((acc, item) => {
+    const { category } = item;
+    if (!acc[category]) {
+      acc[category] = [];
+    }
+    acc[category].push(item);
+    return acc;
+  }, {} as Record<string, Item[]>);
+
   const handleCheckout = async () => {
     const invoiceNumber = Math.floor(Math.random() * 1000000);
 
@@ -151,7 +205,7 @@ export default function SellItem() {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ items: cart, invoiceNumber }),
+      body: JSON.stringify({ items: cart, invoiceNumber, userId: session?.user?.id }),
     });
 
     if (res.ok) {
@@ -159,13 +213,23 @@ export default function SellItem() {
       alert('Sale successful!');
       setCart([]);
       // Refresh items to show updated stock
-      fetch('/api/items')
-        .then((res) => res.json())
-        .then((data) => setItems(data));
+      if (session) {
+        fetch(`/api/items?userId=${session.user.id}`)
+          .then((res) => res.json())
+          .then((data) => setItems(data));
+      }
     } else {
       alert('Sale failed.');
     }
   };
+
+  if (status === 'loading') {
+    return <p>Loading...</p>;
+  }
+
+  if (status === 'unauthenticated') {
+    return <p>Access Denied</p>;
+  }
 
   return (
     <div className={styles.container}>
@@ -211,17 +275,24 @@ export default function SellItem() {
           />
         </div>
         <div className={styles.itemList}>
-          {filteredItems.map((item) => (
-            <div key={item.id} className={styles.card}>
-              <h2>{item.name}</h2>
-              <p>Stock: {item.stock}</p>
-              <p>Price: ₹{item.price}</p>
-              <button
-                onClick={() => openQuantityModal(item)}
-                disabled={item.stock <= 0}
-              >
-                +
-              </button>
+          {Object.entries(groupedItems).map(([category, items]) => (
+            <div key={category}>
+              <h2 className={styles.categoryHeader}>{category}</h2>
+              <div className={styles.cardGrid}>
+                {items.map((item) => (
+                  <div key={item.id} className={styles.card}>
+                    <h2>{item.name}</h2>
+                    <p>Stock: {item.stock}</p>
+                    <p>Price: ₹{item.price}</p>
+                    <button
+                      onClick={() => openQuantityModal(item)}
+                      disabled={item.stock <= 0}
+                    >
+                      +
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>
@@ -230,7 +301,7 @@ export default function SellItem() {
         <h2>Cart</h2>
         {cart.map((item, index) => (
           <div key={index} className={styles.cartItem}>
-            <span>{item.name} (x{item.quantity})</span>
+            <span>{item.name} ({item.batch_code}) (x{item.quantity})</span>
             <span>₹{(item.price * item.quantity).toFixed(2)}</span>
           </div>
         ))}
@@ -241,41 +312,46 @@ export default function SellItem() {
           Checkout
         </button>
       </div>
-      <Modal isOpen={isQuantityModalOpen} onClose={() => setIsQuantityModalOpen(false)}>
+      <Modal isOpen={isQuantityModalOpen} onClose={() => {
+        setIsQuantityModalOpen(false);
+        setBatches([]);
+        setSelectedBatch(null);
+      }}>
         <h2>Enter Quantity</h2>
+        <div className={styles.modalBatchContainer}>
+          {batches.length > 0 && (
+            <>
+              <span className={styles.modalBatchLabel}>Batch Number:</span>
+              <select
+                value={selectedBatch?.batch_code || ''}
+                onChange={(e) => {
+                  const newSelectedBatch = batches.find(b => b.batch_code === e.target.value) || null;
+                  setSelectedBatch(newSelectedBatch);
+                }}
+                className={styles.modalBatchSelect}
+              >
+                {batches.map((batch) => (
+                  <option key={batch.batch_code} value={batch.batch_code}>
+                    Batch: {batch.batch_code} (Price: ₹{batch.price}, Stock: {batch.stock})
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+        </div>
         <input
           type="number"
           value={quantity}
-          onChange={(e) => {
-            const newQuantity = Number(e.target.value);
-            if (selectedItemForQuantity) {
-              const itemInCart = cart.find(
-                (item) => item.id === selectedItemForQuantity.id
-              );
-              if (itemInCart) {
-                if (newQuantity > selectedItemForQuantity.stock - itemInCart.quantity) {
-                  setQuantity(selectedItemForQuantity.stock - itemInCart.quantity);
-                } else {
-                  setQuantity(newQuantity);
-                }
-              } else {
-                if (newQuantity > selectedItemForQuantity.stock) {
-                  setQuantity(selectedItemForQuantity.stock);
-                } else {
-                  setQuantity(newQuantity);
-                }
-              }
-            }
-          }}
+          onChange={(e) => setQuantity(Number(e.target.value))}
           min="1"
-          max={
-            selectedItemForQuantity
-              ? selectedItemForQuantity.stock -
-                (cart.find((item) => item.id === selectedItemForQuantity.id)?.quantity || 0)
-              : 1
-          }
+          max={selectedBatch ? selectedBatch.stock - (cart.find(item => item.batch_code === selectedBatch.batch_code)?.quantity || 0) : 1}
         />
-        <button onClick={addToCart}>Add to Cart</button>
+        <button 
+          onClick={addToCart} 
+          className={styles.addToCartButton}
+        >
+          Add to Cart
+        </button>
       </Modal>
     </div>
   );
