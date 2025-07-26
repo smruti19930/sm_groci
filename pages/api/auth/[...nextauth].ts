@@ -58,7 +58,7 @@ const nextAuthOptions: AuthOptions = {
 };
 
 if (process.env.RENDER_EXTERNAL_URL) {
-  (nextAuthOptions as any).trustHost = true;
+  process.env.NEXTAUTH_URL = process.env.RENDER_EXTERNAL_URL;
 }
 
 export default NextAuth(nextAuthOptions);
